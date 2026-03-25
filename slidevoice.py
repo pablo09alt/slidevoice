@@ -249,6 +249,146 @@ def check_keywords(heard: str):
 
 
 # ── Serveur HTTP local (interface web) ────────────────────────────────────────
+
+REMOTE_PAGE = """<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SlideVoice Remote</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, sans-serif;
+    background: #0d0d0f;
+    color: #e8e8f0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2rem 1.5rem;
+    gap: 1rem;
+  }
+  h1 { font-size: 1.1rem; font-weight: 700; color: #6b6b80; letter-spacing: 0.05em; }
+  .slide-info {
+    text-align: center;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .slide-num {
+    font-size: 4rem;
+    font-weight: 800;
+    color: #00e5a0;
+    line-height: 1;
+  }
+  .slide-total { font-size: 1rem; color: #6b6b80; }
+  .slide-keyword {
+    font-size: 1rem;
+    color: #7b61ff;
+    font-weight: 600;
+    margin-top: 0.5rem;
+  }
+  .btn-next {
+    width: 100%;
+    padding: 1.6rem;
+    border-radius: 20px;
+    border: none;
+    background: #00e5a0;
+    color: #000;
+    font-size: 1.4rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.1s, filter 0.1s;
+    box-shadow: 0 0 30px rgba(0,229,160,0.3);
+    letter-spacing: -0.02em;
+  }
+  .btn-next:active { transform: scale(0.96); filter: brightness(0.9); }
+  .btn-prev {
+    width: 100%;
+    padding: 1rem;
+    border-radius: 14px;
+    border: 1px solid #2a2a32;
+    background: transparent;
+    color: #6b6b80;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .btn-prev:active { background: #16161a; color: #e8e8f0; }
+  .feedback {
+    font-size: 0.85rem;
+    color: #00e5a0;
+    height: 1.2rem;
+    transition: opacity 0.3s;
+    opacity: 0;
+  }
+  .feedback.show { opacity: 1; }
+</style>
+</head>
+<body>
+<h1>SLIDEVOICE REMOTE</h1>
+
+<div class="slide-info">
+  <div class="slide-num" id="slideNum">1</div>
+  <div class="slide-total" id="slideTotal">/ —</div>
+  <div class="slide-keyword" id="slideKeyword"></div>
+</div>
+
+<div style="width:100%; display:flex; flex-direction:column; gap:0.75rem;">
+  <div class="feedback" id="feedback">✓ Slide avancée</div>
+  <button class="btn-next" id="btnNext" ontouchstart="" onclick="nextSlide()">→ Slide suivante</button>
+  <button class="btn-prev" ontouchstart="" onclick="prevSlide()">← Précédente</button>
+</div>
+
+<script>
+async function fetchState() {
+  const r = await fetch('/api/state');
+  return r.json();
+}
+async function postAction(action) {
+  await fetch('/api/action', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action})
+  });
+}
+
+function showFeedback() {
+  const f = document.getElementById('feedback');
+  f.classList.add('show');
+  setTimeout(() => f.classList.remove('show'), 800);
+}
+
+async function nextSlide() {
+  await postAction('next');
+  showFeedback();
+  await updateUI();
+}
+async function prevSlide() {
+  await postAction('prev');
+  await updateUI();
+}
+
+async function updateUI() {
+  const s = await fetchState();
+  document.getElementById('slideNum').textContent = s.current + 1;
+  document.getElementById('slideTotal').textContent = '/ ' + s.slides.length;
+  const kw = s.slides[s.current]?.keyword || '';
+  document.getElementById('slideKeyword').textContent = kw ? '[' + kw + ']' : '';
+}
+
+updateUI();
+setInterval(updateUI, 1500);
+</script>
+</body>
+</html>"""
+
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -685,6 +825,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(HTML_PAGE.encode("utf-8"))
+        elif self.path == "/remote":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(REMOTE_PAGE.encode("utf-8"))
         elif self.path == "/api/state":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -715,6 +860,12 @@ class Handler(BaseHTTPRequestHandler):
                     state["current"] += 1
                     advance_slide()
                     log(f"→ Avancement manuel vers slide {state['current'] + 1}")
+
+            elif action == "prev":
+                if state["current"] > 0:
+                    state["current"] -= 1
+                    import pyautogui as _pg; _pg.press("left")
+                    log(f"← Retour à la slide {state['current'] + 1}")
 
             elif action == "sync":
                 n = body.get("slide", 1)
@@ -749,9 +900,18 @@ def main():
     state["demo_mode"] = not (PYAUTOGUI_OK and (WHISPER_OK or SR_OK))
 
     port = 8742
-    server = HTTPServer(("localhost", port), Handler)
+    server = HTTPServer(("0.0.0.0", port), Handler)
     url = f"http://localhost:{port}"
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "localhost"
     log(f"🌐 Interface disponible sur {url}")
+    log(f"📱 Télécommande (téléphone) : http://{local_ip}:{port}/remote")
 
     threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
