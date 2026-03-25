@@ -12,7 +12,7 @@ Yes, I'm not a pro developer, but feel free to copy this project and do it bette
 
 SlideVoice listens to your microphone while you present. When it hears the keyword you've assigned to the next slide, it instantly sends the right arrow key directly to PowerPoint — no clicking, no remote, no interruption.
 
-It also exposes a phone-friendly remote control page on your local network, so you can tap your phone as a backup if voice recognition misses something.
+It also exposes a phone-friendly remote control page on your local network, so you can tap your phone as a backup if voice recognition misses something (bêta).
 
 ---
 
@@ -89,7 +89,7 @@ Say your keywords naturally as you speak. SlideVoice will detect them and advanc
 
 ---
 
-## Phone remote control
+## Phone remote control (bêta)
 
 When the script starts, it prints a URL in the terminal:
 
